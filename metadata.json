@@ -1,0 +1,7 @@
+{
+  "name": "Siaga RT 05 Gayam",
+  "description": "Aplikasi Panic Button untuk warga RT 05 RW 05 Kelurahan Gayam, Kota Kediri.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

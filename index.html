@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Panic Button RT 05</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#dc2626"/>
+    <style>
+      body { font-family: 'Inter', sans-serif; }
+      @keyframes siren-flash {
+        0%, 100% { background-color: #ef4444; }
+        50% { background-color: #7f1d1d; }
+      }
+      .animate-siren {
+        animation: siren-flash 1s infinite;
+      }
+      /* Leaflet specific fix for missing marker icons when using CDN without build step */
+      .leaflet-default-icon-path { background-image: url(https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png); }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://esm.sh/react-dom@18.2.0/",
+    "react/": "https://esm.sh/react@18.2.0/",
+    "react": "https://esm.sh/react@18.2.0",
+    "lucide-react": "https://esm.sh/lucide-react@0.344.0",
+    "firebase/app": "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js",
+    "firebase/database": "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js",
+    "firebase/": "https://esm.sh/firebase@^12.6.0/"
+  }
+}
+</script>
+</head>
+  <body class="bg-gray-50 text-gray-900">
+    <div id="root"></div>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/service-worker.js')
+            .then(registration => {
+              console.log('ServiceWorker registration successful');
+            })
+            .catch(err => {
+              console.log('ServiceWorker registration failed: ', err);
+            });
+        });
+      }
+    </script>
+  </body>
+</html>
