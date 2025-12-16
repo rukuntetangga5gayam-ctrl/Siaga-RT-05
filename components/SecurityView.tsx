@@ -7,7 +7,7 @@ import {
   Bell, BellOff, MapPin, Clock, ShieldCheck, History, ExternalLink, 
   User, Settings, Users, Plus, Trash2, X, AlertCircle, Lock, KeyRound, 
   LayoutDashboard, LogOut, ChevronRight, Search, Menu, Printer, Eraser,
-  Eye, EyeOff, FileText, Save, Timer, Wifi, WifiOff, Volume2, Mic, Zap
+  Eye, EyeOff, FileText, Save, Timer, Wifi, WifiOff, Volume2, Mic, Zap, Megaphone, PlayCircle
 } from 'lucide-react';
 
 // Tiny 1x1 pixel webm video. Playing this in a loop prevents the device from sleeping.
@@ -116,6 +116,7 @@ const SecurityView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [autoStopEnabled, setAutoStopEnabled] = useState(false); 
   const [sirenLoopDuration, setSirenLoopDuration] = useState(4000); // Durasi sirine sebelum ngomong (ms)
   const [voiceEnabled, setVoiceEnabled] = useState(true); // Toggle Suara Google
+  const [isTesting, setIsTesting] = useState(false); // State untuk Tes Audio
   
   // Data State
   const [residents, setResidents] = useState<Resident[]>([]);
@@ -380,6 +381,85 @@ const SecurityView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       const val = parseInt(e.target.value, 10);
       setSirenLoopDuration(val);
       localStorage.setItem('security_siren_loop_duration', String(val));
+  };
+
+  // --- AUDIO TEST LOGIC (Bell + Voice x3) ---
+  const runSystemTest = async () => {
+      if (isTesting) return;
+      setIsTesting(true);
+
+      // Helper to play chime
+      const playChime = (ctx: AudioContext) => {
+          return new Promise<void>((resolve) => {
+              const now = ctx.currentTime;
+              const osc1 = ctx.createOscillator();
+              const gain1 = ctx.createGain();
+              osc1.connect(gain1);
+              gain1.connect(ctx.destination);
+              
+              const osc2 = ctx.createOscillator();
+              const gain2 = ctx.createGain();
+              osc2.connect(gain2);
+              gain2.connect(ctx.destination);
+
+              // Tone 1: E5 (659.25 Hz)
+              osc1.frequency.setValueAtTime(659.25, now);
+              gain1.gain.setValueAtTime(0.3, now);
+              gain1.gain.exponentialRampToValueAtTime(0.001, now + 2);
+              osc1.start(now);
+              osc1.stop(now + 2);
+
+              // Tone 2: C5 (523.25 Hz) - Delayed slightly
+              osc2.frequency.setValueAtTime(523.25, now + 0.6);
+              gain2.gain.setValueAtTime(0.3, now + 0.6);
+              gain2.gain.exponentialRampToValueAtTime(0.001, now + 2.6);
+              osc2.start(now + 0.6);
+              osc2.stop(now + 2.6);
+
+              setTimeout(resolve, 2800); // Wait for chime to complete
+          });
+      };
+
+      // Helper to speak
+      const playVoice = (text: string) => {
+          return new Promise<void>((resolve) => {
+              if (!('speechSynthesis' in window)) {
+                  resolve();
+                  return;
+              }
+              const utterance = new SpeechSynthesisUtterance(text);
+              utterance.lang = 'id-ID';
+              utterance.rate = 0.9;
+              
+              const voices = window.speechSynthesis.getVoices();
+              const targetVoice = voices.find(v => v.lang.includes('id') && v.name.includes('Google')) || voices.find(v => v.lang.includes('id'));
+              if (targetVoice) utterance.voice = targetVoice;
+
+              utterance.onend = () => resolve();
+              utterance.onerror = () => resolve();
+              
+              window.speechSynthesis.cancel();
+              window.speechSynthesis.speak(utterance);
+          });
+      };
+
+      // 1. Get/Resume Audio Context
+      let ctx = audioCtx;
+      if (!ctx) {
+          ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          setAudioCtx(ctx);
+      }
+      if (ctx.state === 'suspended') await ctx.resume();
+
+      // 2. Loop Sequence 3 Times
+      for (let i = 0; i < 3; i++) {
+          await playChime(ctx);
+          await playVoice("Ini bukan keadaan darurat, ini hanya tes.");
+          // Short pause between loops
+          if (i < 2) await new Promise(r => setTimeout(r, 1000));
+      }
+
+      setIsTesting(false);
   };
 
   const formatTime = (ts: number) => {
@@ -842,6 +922,32 @@ const SecurityView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     {/* --- SETTINGS TAB --- */}
                     {dashboardTab === 'SETTINGS' && (
                          <div className="space-y-6 max-w-2xl">
+                             {/* System Test Section */}
+                             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                                <div className="p-4 border-b border-gray-100 bg-blue-50">
+                                    <div className="font-bold text-blue-800 flex items-center gap-2">
+                                        <Megaphone size={20} />
+                                        Tes Sistem (Simulasi)
+                                    </div>
+                                </div>
+                                <div className="p-6">
+                                    <p className="text-sm text-gray-600 mb-4">
+                                        Menjalankan simulasi audio untuk memeriksa fungsi speaker. Sistem akan memutar suara "Bel Bandara" diikuti oleh pesan suara: <em>"Ini bukan keadaan darurat, ini hanya tes"</em>. Seluruh rangkaian ini diulang 3 kali.
+                                    </p>
+                                    <button 
+                                        onClick={runSystemTest}
+                                        disabled={isTesting}
+                                        className={`w-full py-3 px-4 rounded-lg font-bold flex items-center justify-center gap-2 transition-all ${isTesting ? 'bg-blue-100 text-blue-400 cursor-wait' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-md'}`}
+                                    >
+                                        {isTesting ? (
+                                            <>Sedang Menjalankan Tes...</>
+                                        ) : (
+                                            <><PlayCircle size={20} /> Jalankan Tes Audio</>
+                                        )}
+                                    </button>
+                                </div>
+                             </div>
+
                              {/* Auto Stop / Alarm Settings */}
                              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                                 <div className="p-4 border-b border-gray-100 bg-red-50">

@@ -146,7 +146,6 @@ const Siren: React.FC<SirenProps> = ({
       // Clean text to prevent syntax errors
       const cleanName = residentName.replace(/[^a-zA-Z0-9 ]/g, " ");
       
-      // --- PERUBAHAN TEKS DI SINI ---
       const utterance = new SpeechSynthesisUtterance(`Perhatian perhatian. Saat ini warga lingkungan RT Lima RW lima atas nama ${cleanName} memerlukan bantuan. Mohon para warga segera menuju ke lokasi. Terima kasih.`);
       
       const voices = window.speechSynthesis.getVoices();
@@ -156,11 +155,11 @@ const Siren: React.FC<SirenProps> = ({
 
       let targetVoice = null;
 
-      // 2. Prioritas: Cari yang ada label "Female" atau "Wanita" atau "Google" (Default Google biasanya cewek)
+      // 2. Prioritas: Google / Wanita / Female
       targetVoice = indoVoices.find(v => 
+        v.name.toLowerCase().includes('google') ||
         v.name.toLowerCase().includes('female') || 
-        v.name.toLowerCase().includes('wanita') ||
-        v.name.toLowerCase().includes('google')
+        v.name.toLowerCase().includes('wanita')
       );
 
       // 3. Fallback: Ambil suara Indonesia apa saja
@@ -172,15 +171,13 @@ const Siren: React.FC<SirenProps> = ({
           utterance.voice = targetVoice;
       }
 
-      // --- SETTING SUARA PEREMPUAN ---
+      // --- SETTING KARAKTER SUARA ---
       utterance.lang = 'id-ID';
       
-      // Pitch Normal/Sedikit Tinggi = Suara Perempuan
-      // Range: 0 (Terendah) - 2 (Tertinggi). Default 1.
+      // Pitch: 1.0 (Normal - Cenderung Perempuan/Netral)
       utterance.pitch = 1.0; 
 
-      // Rate Normal = Natural
-      // Range: 0.1 - 10. Default 1.
+      // Rate: 1.0 (Normal)
       utterance.rate = 1.0; 
       
       utterance.volume = 1.0;

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, LocationData, PanicState } from '../types';
 import { triggerPanic, subscribeToPanicState } from '../services/db';
-import { AlertTriangle, MapPin, CheckCircle, VolumeX, ShieldAlert, Smartphone, WifiOff, Signal, Loader2, Power } from 'lucide-react';
+import { AlertTriangle, MapPin, CheckCircle, ShieldAlert, Smartphone, WifiOff, Signal, Loader2, Power, Info } from 'lucide-react';
 import Siren from './Siren';
 
 interface ResidentViewProps {
@@ -15,10 +15,8 @@ const ResidentView: React.FC<ResidentViewProps> = ({ user, onLogout }) => {
   const [location, setLocation] = useState<LocationData | null>(null);
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
   const [loadingLoc, setLoadingLoc] = useState(false); 
-  const [gpsError, setGpsError] = useState<string | null>(null);
   const [isPressing, setIsPressing] = useState(false);
   
-  // New State: Force user interaction to allow browser popup
   const [hasInitialized, setHasInitialized] = useState(false);
   
   // Connection State
@@ -38,13 +36,11 @@ const ResidentView: React.FC<ResidentViewProps> = ({ user, onLogout }) => {
         accuracy: position.coords.accuracy
       });
       setGpsAccuracy(position.coords.accuracy);
-      setGpsError(null); 
   };
 
   // Fungsi Start Watcher (Continuous Tracking)
+  // Dijalankan SETELAH izin didapatkan via requestLocationAccess
   const startWatching = () => {
-      if (!('geolocation' in navigator)) return;
-      
       if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
       
       watchIdRef.current = navigator.geolocation.watchPosition(
@@ -57,59 +53,60 @@ const ResidentView: React.FC<ResidentViewProps> = ({ user, onLogout }) => {
           },
           {
               enableHighAccuracy: true,
-              timeout: 20000,
+              timeout: 30000,
               maximumAge: 0 
           }
       );
   };
 
-  // Fungsi Request Permission (POP UP BROWSER)
-  // Dipanggil HANYA saat ada interaksi klik/sentuh agar Browser tidak memblokir pop-up
+  // --- INTI PERUBAHAN: requestLocationAccess ---
+  // Menghapus pengecekan isSecureContext.
+  // Langsung eksekusi getCurrentPosition saat interaksi user.
   const requestLocationAccess = () => {
+    // Cek dasar ketersediaan API di browser (bukan cek security context)
     if (!('geolocation' in navigator)) {
-        setLoadingLoc(false);
-        setGpsError("Perangkat tidak mendukung GPS");
+        console.warn("Geolocation API not supported");
         return;
     }
 
     setLoadingLoc(true);
-    setGpsError(null);
 
-    // getCurrentPosition dipanggil langsung oleh event Click -> Browser Pop Up Muncul
+    // 1. TEMBAK LANGSUNG (Direct Request)
+    // Browser akan menangani validasi keamanan (HTTP/HTTPS) dan menampilkan pop-up jika diizinkan.
     navigator.geolocation.getCurrentPosition(
         (position) => {
-            console.log("GPS Granted:", position);
+            // SUKSES: Izin diberikan
+            console.log("Initial GPS Lock:", position.coords);
             updateLocationState(position);
             setLoadingLoc(false);
+            
+            // Lanjut ke mode tracking otomatis
             startWatching();
         },
         (error) => {
-            console.warn("GPS Initial Error:", error.message);
+            // ERROR: Izin ditolak atau Timeout
+            console.warn("GPS Initial Error:", error.code, error.message);
             setLoadingLoc(false);
             
-            if (error.code === 1) {
-                setGpsError("Izin Ditolak. Izinkan Lokasi.");
-            } else if (error.code === 2) {
-                setGpsError("Aktifkan GPS / Lokasi HP.");
-                // Tetap nyalakan watcher untuk menangkap jika user menyalakan GPS nanti
-                startWatching();
-            } else {
-                setGpsError("Gagal Mendapat Lokasi.");
+            // Silent Recovery: 
+            // Jika error bukan karena "Permission Denied" (Code 1),
+            // kita coba nyalakan watcher siapa tau sinyal kembali nanti.
+            if (error.code !== 1) {
                 startWatching();
             }
+            // Jika Code 1 (Denied), kita stop loading dan biarkan user klik tombol lagi nanti.
         },
         { 
-            enableHighAccuracy: true, 
-            timeout: 10000, 
-            maximumAge: 0   
+            enableHighAccuracy: true, // Wajib TRUE untuk memancing sensor GPS Hardware
+            timeout: 30000,           // 30 Detik untuk memberi waktu user klik "Allow"
+            maximumAge: 0             // Jangan pakai cache lama
         }
     );
   };
 
   // --- STARTUP HANDLER ---
-  // Fungsi ini dipanggil saat tombol besar ditekan di awal
   const handleSystemStart = async () => {
-      // 1. Trigger GPS (Browser Popup akan muncul karena ini didalam event handler klik)
+      // 1. Trigger GPS segera
       requestLocationAccess();
 
       // 2. Trigger Audio Context & Wake Lock
@@ -137,7 +134,6 @@ const ResidentView: React.FC<ResidentViewProps> = ({ user, onLogout }) => {
 
   const handleInteraction = () => {
       if (!isStandbyActive) activateStandbyMode();
-      if (!location) requestLocationAccess();
   };
 
   useEffect(() => {
@@ -156,11 +152,9 @@ const ResidentView: React.FC<ResidentViewProps> = ({ user, onLogout }) => {
       setPanicState(data);
     });
 
-    // Handle visibility change
     const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible') {
          activateStandbyMode();
-         if (!location && hasInitialized) requestLocationAccess();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -176,7 +170,7 @@ const ResidentView: React.FC<ResidentViewProps> = ({ user, onLogout }) => {
             wakeLockRef.current = null;
         }
     };
-  }, [user.name, hasInitialized]);
+  }, [user.name]); 
 
   const triggerBrowserNotification = (data: PanicState) => {
     if ('Notification' in window && Notification.permission === 'granted') {
@@ -210,13 +204,16 @@ const ResidentView: React.FC<ResidentViewProps> = ({ user, onLogout }) => {
 
   const handlePanic = () => {
     if (!isOnline) {
-        alert("Tidak ada koneksi internet! Periksa WiFi atau Data Seluler Anda.");
         return;
     }
     
+    // Logic Panic:
+    // Jika lokasi sudah ada, kirim langsung.
+    // Jika belum, coba minta lagi (sebagai backup) lalu kirim.
     if (location) {
         triggerPanic(user.name, location);
     } else {
+        setLoadingLoc(true);
         if ('geolocation' in navigator) {
             navigator.geolocation.getCurrentPosition(
                 (position) => {
@@ -226,13 +223,16 @@ const ResidentView: React.FC<ResidentViewProps> = ({ user, onLogout }) => {
                         accuracy: position.coords.accuracy
                     };
                     setLocation(locData);
+                    setLoadingLoc(false);
                     triggerPanic(user.name, locData);
                 },
                 (err) => {
                     console.log("Panic sent without location:", err);
+                    setLoadingLoc(false);
+                    // Tetap kirim panic meski tanpa lokasi
                     triggerPanic(user.name);
                 },
-                { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 } 
             );
         } else {
              triggerPanic(user.name);
@@ -244,7 +244,7 @@ const ResidentView: React.FC<ResidentViewProps> = ({ user, onLogout }) => {
   const isOthersEmergency = panicState?.status === 'AKTIF' && panicState.nama !== user.name;
   const shouldPlaySiren = isOthersEmergency && isStandbyActive;
 
-  // --- LAYAR AWAL INTERAKSI (SOLUSI POPUP BROWSER) ---
+  // --- LAYAR AWAL ---
   if (!hasInitialized) {
       return (
         <div className="h-screen bg-red-600 flex flex-col items-center justify-center p-6 text-white text-center relative overflow-hidden">
@@ -259,7 +259,7 @@ const ResidentView: React.FC<ResidentViewProps> = ({ user, onLogout }) => {
                     <Power size={40} className="text-red-600" />
                 </div>
                 <h1 className="text-2xl font-black uppercase mb-2">Siaga RT 05</h1>
-                <p className="text-sm opacity-90 mb-8 leading-relaxed">
+                <p className="text-sm opacity-90 mb-4 leading-relaxed">
                     Aplikasi ini memerlukan Izin Lokasi dan Suara agar dapat berfungsi.
                 </p>
                 
@@ -272,7 +272,8 @@ const ResidentView: React.FC<ResidentViewProps> = ({ user, onLogout }) => {
                 </button>
                 
                 <p className="mt-6 text-xs text-white/60">
-                    Klik tombol diatas dan pilih <strong>"Allow" / "Izinkan"</strong> pada pop-up browser yang muncul.
+                    <strong>PENTING:</strong><br/>
+                    Tunggu Pop-up muncul & pilih <strong>"Allow" / "Izinkan"</strong>.
                 </p>
             </div>
         </div>
@@ -327,8 +328,9 @@ const ResidentView: React.FC<ResidentViewProps> = ({ user, onLogout }) => {
       {/* Main Content */}
       <div className="flex-1 flex flex-col items-center justify-center p-6 relative overflow-hidden">
         
-        {/* Status Indicator (Pure Status - No Manual Refresh) */}
+        {/* Status Indicator */}
         <div className="absolute top-4 w-full px-6 flex flex-col items-center gap-2 z-20">
+          
           <button 
             onClick={(e) => { e.stopPropagation(); requestLocationAccess(); }}
             disabled={!!location}
@@ -339,13 +341,12 @@ const ResidentView: React.FC<ResidentViewProps> = ({ user, onLogout }) => {
             }`}
           >
             {loadingLoc ? <Loader2 size={16} className="animate-spin" /> 
-             : location ? <MapPin size={16} /> 
-             : <AlertTriangle size={16} />}
+            : location ? <MapPin size={16} /> 
+            : <AlertTriangle size={16} />}
             
-            {loadingLoc ? 'Mencari Lokasi...' 
-             : location ? 'GPS Aktif & Siap' 
-             : gpsError ? gpsError 
-             : 'GPS Tidak Terdeteksi (Ketuk)'}
+            {loadingLoc ? 'Meminta Izin Lokasi...' 
+            : location ? 'GPS Aktif & Siap' 
+            : 'GPS Tidak Terdeteksi (Ketuk)'}
           </button>
           
           {/* Accuracy or Help Text */}
@@ -354,9 +355,12 @@ const ResidentView: React.FC<ResidentViewProps> = ({ user, onLogout }) => {
                   <Signal size={10} /> Akurasi: ±{Math.round(gpsAccuracy)}m
               </div>
           ) : !loadingLoc && !location && (
-              <p className="text-[10px] text-red-600 bg-white/90 px-3 py-1 rounded-full text-center shadow-sm font-bold animate-bounce">
-                 ⚠️ Jika Pop-up tidak muncul, cek pengaturan browser HP.
-              </p>
+              <button 
+                onClick={(e) => { e.stopPropagation(); requestLocationAccess(); }}
+                className="text-[10px] text-red-600 bg-white/90 px-3 py-1 rounded-full text-center shadow-sm font-bold animate-bounce flex items-center gap-1"
+              >
+                 <Info size={12}/> Klik tombol di atas jika pop-up tidak muncul
+              </button>
           )}
         </div>
 
