@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, AppMode, Resident } from './types';
 import ResidentView from './components/ResidentView';
 import SecurityView from './components/SecurityView';
-import { Shield, User, ArrowRight, ChevronDown, Search, Download, X, Smartphone, Wifi, WifiOff, AlertTriangle, Users } from 'lucide-react';
+import { Shield, User, ArrowRight, ChevronDown, Search, Download, X, Smartphone, Wifi, WifiOff, AlertTriangle, Users, Loader2 } from 'lucide-react';
 import { subscribeToResidents, isOnlineMode } from './services/db';
 
 const App: React.FC = () => {
@@ -13,6 +13,7 @@ const App: React.FC = () => {
   // Input State
   const [nameInput, setNameInput] = useState('');
   const [isInputFocused, setIsInputFocused] = useState(false);
+  const [isLoadingGPS, setIsLoadingGPS] = useState(false);
   
   // Resident List
   const [residentList, setResidentList] = useState<Resident[]>([]);
@@ -24,19 +25,48 @@ const App: React.FC = () => {
   // Wrapper ref for click outside handling
   const inputWrapperRef = useRef<HTMLDivElement>(null);
 
+  // --- FUNGSI REQUEST LOCATION (Sesuai Snippet) ---
+  const requestLocation = (onSuccess?: () => void, onError?: () => void) => {
+    if ("geolocation" in navigator) {
+        setIsLoadingGPS(true);
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                console.log("Lokasi diizinkan:", position.coords.latitude);
+                setIsLoadingGPS(false);
+                if (onSuccess) onSuccess();
+            },
+            (error) => {
+                setIsLoadingGPS(false);
+                if (error.code === error.PERMISSION_DENIED) {
+                    alert("Mohon aktifkan izin lokasi di pengaturan browser Anda untuk melanjutkan.");
+                }
+                if (onError) onError();
+            },
+            {
+                enableHighAccuracy: true, // Memaksa GPS aktif
+                timeout: 5000,
+                maximumAge: 0 // Memastikan tidak mengambil data cache lama
+            }
+        );
+    } else {
+        alert("Browser Anda tidak mendukung Geolocation.");
+        if (onError) onError();
+    }
+  };
+
   useEffect(() => {
-    // Check local storage for existing user profile
+    // 1. Check local storage for existing user profile
     const savedProfile = localStorage.getItem('rt05_user_profile');
     if (savedProfile) {
       setUserProfile(JSON.parse(savedProfile));
     }
 
-    // Subscribe to resident list updates
+    // 2. Subscribe to resident list updates
     const unsub = subscribeToResidents((data) => {
         setResidentList(data);
     });
     
-    // Handle click outside to close suggestions
+    // 3. Handle click outside to close suggestions
     const handleClickOutside = (event: MouseEvent) => {
       if (inputWrapperRef.current && !inputWrapperRef.current.contains(event.target as Node)) {
         setIsInputFocused(false);
@@ -44,14 +74,17 @@ const App: React.FC = () => {
     };
     document.addEventListener("mousedown", handleClickOutside);
 
-    // --- PWA INSTALL LISTENER ---
+    // 4. PWA INSTALL LISTENER
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setInstallPrompt(e);
       setTimeout(() => setShowInstallBanner(true), 1500);
     };
-
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    // 5. AUTO REQUEST LOCATION ON LOAD (Window OnLoad)
+    // Mencoba memancing pop-up saat aplikasi pertama kali dimuat
+    requestLocation();
 
     return () => {
         unsub();
@@ -73,11 +106,23 @@ const App: React.FC = () => {
   const handleResidentLogin = (e: React.FormEvent) => {
     e.preventDefault();
     const finalName = nameInput.trim();
+    
     if (finalName) {
         const profile: UserProfile = { name: finalName };
         localStorage.setItem('rt05_user_profile', JSON.stringify(profile));
-        setUserProfile(profile);
-        setMode('RESIDENT');
+
+        // Trigger GPS Check sebelum masuk
+        requestLocation(
+            () => { // Success
+                setUserProfile(profile);
+                setMode('RESIDENT');
+            },
+            () => { // Error / Denied
+                // Tetap izinkan masuk, tapi nanti ResidentView akan mencoba lagi/menampilkan status
+                setUserProfile(profile);
+                setMode('RESIDENT');
+            }
+        );
     }
   };
 
@@ -90,6 +135,13 @@ const App: React.FC = () => {
   const handleSelectSuggestion = (name: string) => {
     setNameInput(name);
     setIsInputFocused(false);
+  };
+
+  const handleEnterResidentMode = () => {
+    requestLocation(
+        () => setMode('RESIDENT'),
+        () => setMode('RESIDENT') // Fallback enter
+    );
   };
 
   const filteredResidents = residentList.filter(r => 
@@ -130,6 +182,7 @@ const App: React.FC = () => {
           <div className="flex bg-gray-100 rounded-lg p-1 mb-8">
             <button
               onClick={() => setMode('HOME')}
+              disabled={isLoadingGPS}
               className={`flex-1 py-2 text-sm font-bold rounded-md transition-all flex items-center justify-center gap-2 ${
                 mode === 'HOME' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
@@ -139,6 +192,7 @@ const App: React.FC = () => {
             </button>
             <button
               onClick={() => setMode('SECURITY')}
+              disabled={isLoadingGPS}
               className={`flex-1 py-2 text-sm font-bold rounded-md transition-all flex items-center justify-center gap-2 ${
                 mode === 'SECURITY' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
@@ -155,13 +209,23 @@ const App: React.FC = () => {
                      <p className="text-gray-600 mb-4">Selamat datang kembali,</p>
                      <h3 className="text-2xl font-bold text-gray-900 mb-6">{userProfile.name}</h3>
                      <button
-                        onClick={() => setMode('RESIDENT')}
-                        className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+                        onClick={handleEnterResidentMode}
+                        disabled={isLoadingGPS}
+                        className={`w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-2 ${isLoadingGPS ? 'opacity-75 cursor-wait' : ''}`}
                      >
-                        Buka Tombol Darurat <ArrowRight size={18} />
+                        {isLoadingGPS ? (
+                            <>
+                                <Loader2 size={20} className="animate-spin" /> Memproses Izin GPS...
+                            </>
+                        ) : (
+                            <>
+                                Buka Tombol Darurat <ArrowRight size={18} />
+                            </>
+                        )}
                      </button>
                      <button 
                         onClick={handleLogout}
+                        disabled={isLoadingGPS}
                         className="mt-4 text-sm text-gray-400 underline"
                      >
                         Ganti Akun
@@ -184,6 +248,7 @@ const App: React.FC = () => {
                             onChange={(e) => setNameInput(e.target.value)}
                             onFocus={() => setIsInputFocused(true)}
                             autoComplete="off"
+                            disabled={isLoadingGPS}
                         />
                         {/* Indicator Icon */}
                         {residentList.length > 0 && (
@@ -219,9 +284,16 @@ const App: React.FC = () => {
 
                     <button
                       type="submit"
-                      className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg transition-colors shadow-lg shadow-red-200 relative z-0"
+                      disabled={isLoadingGPS}
+                      className={`w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg transition-colors shadow-lg shadow-red-200 relative z-0 flex items-center justify-center gap-2 ${isLoadingGPS ? 'opacity-75 cursor-wait' : ''}`}
                     >
-                      Masuk
+                      {isLoadingGPS ? (
+                          <>
+                           <Loader2 size={18} className="animate-spin" /> Memproses Izin GPS...
+                          </>
+                      ) : (
+                          "Masuk"
+                      )}
                     </button>
                   </form>
                 )}

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, LocationData, PanicState } from '../types';
 import { triggerPanic, subscribeToPanicState } from '../services/db';
-import { AlertTriangle, MapPin, CheckCircle, ShieldAlert, Smartphone, WifiOff, Signal, Loader2, Power, Info } from 'lucide-react';
+import { AlertTriangle, MapPin, CheckCircle, ShieldAlert, WifiOff, Loader2 } from 'lucide-react';
 import Siren from './Siren';
 
 interface ResidentViewProps {
@@ -17,13 +17,10 @@ const ResidentView: React.FC<ResidentViewProps> = ({ user, onLogout }) => {
   const [loadingLoc, setLoadingLoc] = useState(false); 
   const [isPressing, setIsPressing] = useState(false);
   
-  const [hasInitialized, setHasInitialized] = useState(false);
-  
   // Connection State
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  // Audio & Notification State
-  const [isStandbyActive, setIsStandbyActive] = useState(false);
+  // Audio State & Refs
   const prevStatusRef = useRef<string | undefined>(undefined);
   const wakeLockRef = useRef<any>(null);
   const watchIdRef = useRef<number | null>(null);
@@ -38,8 +35,7 @@ const ResidentView: React.FC<ResidentViewProps> = ({ user, onLogout }) => {
       setGpsAccuracy(position.coords.accuracy);
   };
 
-  // Fungsi Start Watcher (Continuous Tracking)
-  // Dijalankan SETELAH izin didapatkan via requestLocationAccess
+  // Fungsi Watcher (Continuous Tracking) - Dijalankan setelah izin didapat
   const startWatching = () => {
       if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
       
@@ -59,102 +55,87 @@ const ResidentView: React.FC<ResidentViewProps> = ({ user, onLogout }) => {
       );
   };
 
-  // --- INTI PERUBAHAN: requestLocationAccess ---
-  // Menghapus pengecekan isSecureContext.
-  // Langsung eksekusi getCurrentPosition saat interaksi user.
+  // --- LOGIKA UTAMA: Request Location Access ---
   const requestLocationAccess = () => {
-    // Cek dasar ketersediaan API di browser (bukan cek security context)
     if (!('geolocation' in navigator)) {
-        console.warn("Geolocation API not supported");
         return;
     }
 
     setLoadingLoc(true);
 
-    // 1. TEMBAK LANGSUNG (Direct Request)
-    // Browser akan menangani validasi keamanan (HTTP/HTTPS) dan menampilkan pop-up jika diizinkan.
     navigator.geolocation.getCurrentPosition(
         (position) => {
-            // SUKSES: Izin diberikan
-            console.log("Initial GPS Lock:", position.coords);
+            // SUKSES: Izin diberikan -> Simpan lokasi -> Mulai Tracking
+            console.log("GPS Lock Acquired:", position.coords);
             updateLocationState(position);
             setLoadingLoc(false);
-            
-            // Lanjut ke mode tracking otomatis
             startWatching();
         },
         (error) => {
-            // ERROR: Izin ditolak atau Timeout
-            console.warn("GPS Initial Error:", error.code, error.message);
+            // ERROR: Izin ditolak atau timeout
             setLoadingLoc(false);
             
-            // Silent Recovery: 
-            // Jika error bukan karena "Permission Denied" (Code 1),
-            // kita coba nyalakan watcher siapa tau sinyal kembali nanti.
-            if (error.code !== 1) {
+            if (error.code === error.PERMISSION_DENIED) {
+                alert("Mohon aktifkan izin lokasi di pengaturan browser Anda untuk melanjutkan.");
+            } else {
+                console.warn("GPS Initial Error:", error.code, error.message);
+                // Tetap coba jalankan watcher di background jika error bukan karena user menolak (Code 1)
                 startWatching();
             }
-            // Jika Code 1 (Denied), kita stop loading dan biarkan user klik tombol lagi nanti.
         },
         { 
-            enableHighAccuracy: true, // Wajib TRUE untuk memancing sensor GPS Hardware
-            timeout: 30000,           // 30 Detik untuk memberi waktu user klik "Allow"
-            maximumAge: 0             // Jangan pakai cache lama
+            enableHighAccuracy: true,
+            timeout: 5000, // Timeout 5 detik sesuai permintaan
+            maximumAge: 0
         }
     );
   };
 
-  // --- STARTUP HANDLER ---
-  const handleSystemStart = async () => {
-      // 1. Trigger GPS segera
-      requestLocationAccess();
-
-      // 2. Trigger Audio Context & Wake Lock
-      activateStandbyMode();
-
-      // 3. Masuk ke tampilan utama
-      setHasInitialized(true);
-  };
-
-  const activateStandbyMode = async () => {
-    // Notification
-    if ('Notification' in window && Notification.permission === 'default') {
-      try { await Notification.requestPermission(); } catch (e) {}
-    }
-
-    // Wake Lock
+  // Request Wake Lock (Screen Always On) saat Panic Terjadi
+  const requestWakeLock = async () => {
     if ('wakeLock' in navigator && !wakeLockRef.current) {
         try {
             wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
-        } catch (err) {}
+        } catch (err) {
+            console.log("Wake Lock fail", err);
+        }
+    }
+  };
+
+  // --- USE EFFECT INITIALIZATION ---
+  useEffect(() => {
+    // 1. OTOMATIS REQUEST LOKASI (Pop-up GPS)
+    requestLocationAccess();
+
+    // 2. OTOMATIS REQUEST NOTIFIKASI (Pop-up Notif)
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
     }
 
-    setIsStandbyActive(true);
-  };
-
-  const handleInteraction = () => {
-      if (!isStandbyActive) activateStandbyMode();
-  };
-
-  useEffect(() => {
+    // Listener Online/Offline
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    // Listener Panic State dari Database
     const unsubscribe = subscribeToPanicState((data) => {
       if (data.status === 'AKTIF' && prevStatusRef.current !== 'AKTIF') {
+        // Jika ada panic baru (bukan dari diri sendiri), kirim notifikasi browser
         if (data.nama !== user.name) {
            triggerBrowserNotification(data);
         }
+        // Aktifkan layar agar tidak mati saat darurat
+        requestWakeLock();
       }
       prevStatusRef.current = data.status;
       setPanicState(data);
     });
 
+    // Visibility Change: Refresh GPS saat user kembali ke tab
     const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible') {
-         activateStandbyMode();
+         if (!location) requestLocationAccess();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -203,16 +184,13 @@ const ResidentView: React.FC<ResidentViewProps> = ({ user, onLogout }) => {
   };
 
   const handlePanic = () => {
-    if (!isOnline) {
-        return;
-    }
+    if (!isOnline) return;
     
-    // Logic Panic:
-    // Jika lokasi sudah ada, kirim langsung.
-    // Jika belum, coba minta lagi (sebagai backup) lalu kirim.
+    // Kirim Panic ke Database
     if (location) {
         triggerPanic(user.name, location);
     } else {
+        // Fallback: Jika lokasi belum ada, coba ambil sekali lagi (one-shot) lalu kirim
         setLoadingLoc(true);
         if ('geolocation' in navigator) {
             navigator.geolocation.getCurrentPosition(
@@ -229,10 +207,9 @@ const ResidentView: React.FC<ResidentViewProps> = ({ user, onLogout }) => {
                 (err) => {
                     console.log("Panic sent without location:", err);
                     setLoadingLoc(false);
-                    // Tetap kirim panic meski tanpa lokasi
-                    triggerPanic(user.name);
+                    triggerPanic(user.name); // Kirim tanpa lokasi
                 },
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 } 
+                { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 } 
             );
         } else {
              triggerPanic(user.name);
@@ -242,51 +219,13 @@ const ResidentView: React.FC<ResidentViewProps> = ({ user, onLogout }) => {
 
   const isMyEmergency = panicState?.status === 'AKTIF' && panicState.nama === user.name;
   const isOthersEmergency = panicState?.status === 'AKTIF' && panicState.nama !== user.name;
-  const shouldPlaySiren = isOthersEmergency && isStandbyActive;
-
-  // --- LAYAR AWAL ---
-  if (!hasInitialized) {
-      return (
-        <div className="h-screen bg-red-600 flex flex-col items-center justify-center p-6 text-white text-center relative overflow-hidden">
-            {/* Background Accents */}
-            <div className="absolute top-0 left-0 w-full h-full overflow-hidden opacity-20 pointer-events-none">
-                <div className="absolute top-[-10%] left-[-10%] w-64 h-64 bg-white rounded-full mix-blend-overlay filter blur-3xl animate-pulse"></div>
-                <div className="absolute bottom-[-10%] right-[-10%] w-80 h-80 bg-black rounded-full mix-blend-overlay filter blur-3xl"></div>
-            </div>
-
-            <div className="relative z-10 max-w-sm w-full bg-white/10 backdrop-blur-md rounded-2xl p-8 border border-white/20 shadow-2xl">
-                <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
-                    <Power size={40} className="text-red-600" />
-                </div>
-                <h1 className="text-2xl font-black uppercase mb-2">Siaga RT 05</h1>
-                <p className="text-sm opacity-90 mb-4 leading-relaxed">
-                    Aplikasi ini memerlukan Izin Lokasi dan Suara agar dapat berfungsi.
-                </p>
-                
-                <button 
-                    onClick={handleSystemStart}
-                    className="w-full bg-white text-red-600 font-bold py-4 rounded-xl shadow-xl active:scale-95 transition-transform flex items-center justify-center gap-2 group"
-                >
-                    <Smartphone size={20} className="group-hover:animate-bounce" />
-                    AKTIFKAN SISTEM
-                </button>
-                
-                <p className="mt-6 text-xs text-white/60">
-                    <strong>PENTING:</strong><br/>
-                    Tunggu Pop-up muncul & pilih <strong>"Allow" / "Izinkan"</strong>.
-                </p>
-            </div>
-        </div>
-      );
-  }
+  
+  // Sirine bunyi jika ada darurat orang lain
+  const shouldPlaySiren = isOthersEmergency;
 
   // --- TAMPILAN UTAMA ---
   return (
-    <div 
-        className={`flex flex-col h-screen transition-colors duration-500 ${isOthersEmergency ? 'bg-red-50 animate-siren' : 'bg-gray-100'}`}
-        onClick={handleInteraction} 
-        onTouchStart={handleInteraction}
-    >
+    <div className={`flex flex-col h-screen transition-colors duration-500 ${isOthersEmergency ? 'bg-red-50 animate-siren' : 'bg-gray-100'}`}>
       
       <Siren active={shouldPlaySiren} residentName={panicState?.nama} />
 
@@ -311,56 +250,23 @@ const ResidentView: React.FC<ResidentViewProps> = ({ user, onLogout }) => {
         </div>
       </div>
 
-      {/* Active Standby Indicator */}
-      {isStandbyActive && !isMyEmergency && !isOthersEmergency && (
-         <div className="bg-green-600 text-white py-2 px-4 flex items-center justify-between shadow-sm z-20">
-            <div className="flex items-center gap-2">
-                <Smartphone size={16} className="animate-pulse" />
-                <div className="text-[10px] font-bold tracking-wide uppercase leading-tight">
-                    Mode Siaga Aktif<br/>
-                    <span className="opacity-80 normal-case font-normal">Sistem siap. Jangan tutup tab ini.</span>
-                </div>
-            </div>
-            <div className="h-2 w-2 rounded-full bg-white animate-ping"></div>
-         </div>
-      )}
-
       {/* Main Content */}
       <div className="flex-1 flex flex-col items-center justify-center p-6 relative overflow-hidden">
         
-        {/* Status Indicator */}
-        <div className="absolute top-4 w-full px-6 flex flex-col items-center gap-2 z-20">
-          
-          <button 
-            onClick={(e) => { e.stopPropagation(); requestLocationAccess(); }}
-            disabled={!!location}
-            className={`p-3 rounded-lg flex items-center justify-center gap-2 text-sm font-medium transition-colors w-full shadow-sm select-none ${
-                loadingLoc ? 'bg-blue-100 text-blue-700 animate-pulse cursor-wait' 
-                : location ? 'bg-green-100 text-green-700 cursor-default' 
-                : 'bg-red-100 text-red-700 border border-red-200 cursor-pointer hover:bg-red-200'
-            }`}
-          >
-            {loadingLoc ? <Loader2 size={16} className="animate-spin" /> 
-            : location ? <MapPin size={16} /> 
-            : <AlertTriangle size={16} />}
-            
-            {loadingLoc ? 'Meminta Izin Lokasi...' 
-            : location ? 'GPS Aktif & Siap' 
-            : 'GPS Tidak Terdeteksi (Ketuk)'}
-          </button>
-          
-          {/* Accuracy or Help Text */}
-          {location && gpsAccuracy ? (
-              <div className="text-[10px] text-gray-500 bg-white/80 px-2 py-1 rounded-full shadow-sm border border-gray-200 flex items-center gap-1">
-                  <Signal size={10} /> Akurasi: ±{Math.round(gpsAccuracy)}m
-              </div>
-          ) : !loadingLoc && !location && (
-              <button 
-                onClick={(e) => { e.stopPropagation(); requestLocationAccess(); }}
-                className="text-[10px] text-red-600 bg-white/90 px-3 py-1 rounded-full text-center shadow-sm font-bold animate-bounce flex items-center gap-1"
-              >
-                 <Info size={12}/> Klik tombol di atas jika pop-up tidak muncul
-              </button>
+        {/* Status GPS Indicator (Hanya Badge Informatif) */}
+        <div className="absolute top-4 w-full flex justify-center z-20 pointer-events-none">
+          {loadingLoc ? (
+            <div className="bg-blue-50/90 backdrop-blur-sm text-blue-700 px-3 py-1.5 rounded-full flex items-center gap-2 shadow-sm text-xs font-bold border border-blue-100 animate-pulse">
+               <Loader2 size={12} className="animate-spin" /> Mencari Lokasi...
+            </div>
+          ) : location ? (
+            <div className="bg-green-50/90 backdrop-blur-sm text-green-700 px-3 py-1.5 rounded-full flex items-center gap-2 shadow-sm text-xs font-bold border border-green-100">
+               <MapPin size={12} /> Lokasi Aktif (±{Math.round(gpsAccuracy || 0)}m)
+            </div>
+          ) : (
+            <div className="bg-orange-50/90 backdrop-blur-sm text-orange-700 px-3 py-1.5 rounded-full flex items-center gap-2 shadow-sm text-xs font-bold border border-orange-100">
+               <AlertTriangle size={12} /> Lokasi Belum Terdeteksi
+            </div>
           )}
         </div>
 
@@ -414,7 +320,7 @@ const ResidentView: React.FC<ResidentViewProps> = ({ user, onLogout }) => {
             </div>
           </div>
         ) : !isOthersEmergency && (
-          // --- SCENARIO 3: STANDBY / PANIC BUTTON ---
+          // --- SCENARIO 3: PANIC BUTTON (READY) ---
           <div className="text-center z-10 flex flex-col items-center w-full">
              
              {/* OFFLINE BLOCKING */}
