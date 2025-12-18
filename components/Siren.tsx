@@ -146,7 +146,8 @@ const Siren: React.FC<SirenProps> = ({
       // Clean text to prevent syntax errors
       const cleanName = residentName.replace(/[^a-zA-Z0-9 ]/g, " ");
       
-      const utterance = new SpeechSynthesisUtterance(`Perhatian perhatian. Saat ini warga lingkungan RT Lima RW lima atas nama ${cleanName} memerlukan bantuan. Mohon para warga segera menuju ke lokasi. Terima kasih.`);
+      // MODIFIED: Updated text message as requested
+      const utterance = new SpeechSynthesisUtterance(`Perhatian, Perhatian! Saat ini telah terjadi kondisi darurat di RT 05 RW 05. Warga atas nama ${cleanName} membutuhkan bantuan segera. Mohon untuk menuju ke kediaman ${cleanName} sekarang. Terima kasih.`);
       
       const voices = window.speechSynthesis.getVoices();
       
