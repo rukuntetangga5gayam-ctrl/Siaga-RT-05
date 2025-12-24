@@ -1,10 +1,12 @@
-const CACHE_NAME = 'siaga-rt05-v22-bg-tts';
+
+const CACHE_NAME = 'siaga-rt05-v23';
 const urlsToCache = [
   '/',
   '/index.html',
   '/manifest.json'
 ];
 
+// Install Event
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
@@ -15,25 +17,39 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => response)
-      .catch(() => caches.match(event.request))
-  );
-});
-
+// Activate Event - Membersihkan cache lama
 self.addEventListener('activate', (event) => {
-  const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
+          if (cacheName !== CACHE_NAME) {
             return caches.delete(cacheName);
           }
         })
       );
     }).then(() => self.clients.claim())
+  );
+});
+
+// Fetch Event - Strategi: Network First, fallback to Cache
+self.addEventListener('fetch', (event) => {
+  // Hanya tangani permintaan navigasi (pembukaan halaman)
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .catch(() => {
+          return caches.match('/');
+        })
+    );
+    return;
+  }
+
+  // Permintaan aset lainnya
+  event.respondWith(
+    caches.match(event.request)
+      .then((response) => {
+        return response || fetch(event.request);
+      })
   );
 });

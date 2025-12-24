@@ -1,21 +1,33 @@
+
 {
-  "short_name": "Siaga RT05",
-  "name": "Panic Button RT 05 Gayam",
+  "short_name": "Siaga RW05",
+  "name": "Panic Button RW 05 Kelurahan Gayam",
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/1033/1033066.png",
+      "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj4KICA8cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgZmlsbD0iI2Y5ZmFmYiIvPgogIDxjaXJjbGUgY3g9IjI1NiIgY3k9IjI1NiIgcj0iMTQwIiBmaWxsPSIjZGMyNjI2Ii8+CiAgPHRleHQgeD0iMjU2IiB5PSIyNzgiIGZvbnQtZmFtaWx5PSInSW50ZXInLCBzYW5zLXNlcmlmIiBmb250LXdlaWdodD0iODQwIiBmb250LXNpemU9IjYwIiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgbGV0dGVyLXNwYWNpbmc9Ii0zIj5QQU5JQzwvdGV4dD4KPC9zdmc+",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     },
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/1033/1033066.png",
+      "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj4KICA8cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgZmlsbD0iI2Y5ZmFmYiIvPgogIDxjaXJjbGUgY3g9IjI1NiIgY3k9IjI1NiIgcj0iMTYwIiBmaWxsPSIjZGMyNjI2Ii8+CiAgPHRleHQgeD0iMjU2IiB5PSIyNzkiIGZvbnQtZmFtaWx5PSInSW50ZXInLCBzYW5zLXNlcmlmIiBmb250LXdlaWdodD0iODQwIiBmb250LXNpemU9IjcwIiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgbGV0dGVyLXNwYWNpbmc9Ii0zIj5QQU5JQzwvdGV4dD4KPC9zdmc+",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/svg+xml",
+      "purpose": "any"
     }
   ],
-  "start_url": ".",
+  "start_url": "/",
   "display": "standalone",
   "theme_color": "#dc2626",
   "background_color": "#ffffff",
-  "orientation": "portrait"
+  "orientation": "portrait",
+  "scope": "/",
+  "categories": ["utilities", "security"],
+  "shortcuts": [
+    {
+      "name": "Kirim Panic",
+      "url": "/",
+      "icons": [{ "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj4KICA8cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgcng9IjEwMCIgZmlsbD0iI2Y5ZmFmYiIvPgogIDxjaXJjbGUgY3g9IjI1NiIgY3k9IjI1NiIgcj0iMTYwIiBmaWxsPSIjZGMyNjI2Ii8+CiAgPHRleHQgeD0iMjU2IiB5PSIyNzkiIGZvbnQtZmFtaWx5PSInSW50ZXInLCBzYW5zLXNlcmlmIiBmb250LXdlaWdodD0iODQwIiBmb250LXNpemU9IjcwIiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgbGV0dGVyLXNwYWNpbmc9Ii0zIj5QQU5JQzwvdGV4dD4KPC9zdmc+", "sizes": "192x192" }]
+    }
+  ]
 }
